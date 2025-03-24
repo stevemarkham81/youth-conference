@@ -1,0 +1,132 @@
+from attendee import Attendee
+from group import Group
+from copy import deepcopy
+import logging
+import numpy as np
+import datetime
+
+MAX_SWAPS = 1000
+MAX_TRIES = 20000
+MEAN_WEIGHT = 1
+MIN_WEIGHT = 0
+
+
+class Conference:
+    def __init__(self, groups):
+        self.groups = groups
+    
+    def __dict__(self):
+        return {'groups': [g.__dict__() for g in self.groups]}
+
+    @classmethod
+    def from_dict(cls, data):
+        groups = [Group.from_dict(g) for g in data['groups']]
+        return cls(groups)
+
+    @property
+    def num_attendees(self):
+        return sum(g.size for g in self.groups)
+
+    @staticmethod
+    def _flatten_groups(groups: list[Group]) -> list[Attendee]:
+        """Flatten the list of groups into a single list of attendees."""
+        return [a for g in groups for a in g.attendees]
+
+    def score(self) -> float:
+        """
+        A conference's score is the lowest group score plus the median score times some weighting factor
+        """
+        group_scores = [g.score() for g in self.groups]
+        return (MIN_WEIGHT * min(group_scores)) + (MEAN_WEIGHT * np.mean(group_scores))
+    
+    def swap(self, g1, a1, g2, a2):
+        self.groups[g1].attendees[a1], self.groups[g2].attendees[a2] = self.groups[g2].attendees[a2], self.groups[g1].attendees[a1]
+    
+    def try_swap(self, g1, a1, g2, a2, cached_scores):
+        if g1 not in cached_scores:
+            cached_scores[g1] = {}
+        if a1 not in cached_scores[g1]:
+            cached_scores[g1][a1] = {}
+        if g2 not in cached_scores[g1][a1]:
+            cached_scores[g1][a1][g2] = {}
+        if a2 in cached_scores[g1][a1][g2]:
+            return cached_scores[g1][a1][g2][a2], cached_scores
+
+        test_conference = Conference.from_dict(self.__dict__())
+        test_conference.swap(g1, a1, g2, a2)
+        cached_scores[g1][a1][g2][a2] = test_conference.score() - self.score()
+
+        return cached_scores[g1][a1][g2][a2], cached_scores
+
+    def get_best_swap(self, good_enough=100, cached_scores=None):
+        if cached_scores is None:
+            cached_scores = {}
+        best_g1 = 0
+        best_a1 = 0
+        best_g2 = 0
+        best_a2 = 0
+        best_score = 0
+
+        for g1 in range(len(self.groups)):
+            for a1 in range(len(self.groups[g1].attendees)):
+                for g2 in range(len(self.groups)):
+                    if g2 <= g1:
+                        continue
+                    for a2 in range(len(self.groups[g2].attendees)):
+                        score, cached_scores = self.try_swap(g1, a1, g2, a2, cached_scores)
+                        if score > best_score:
+                            best_g1 = g1
+                            best_a1 = a1
+                            best_g2 = g2
+                            best_a2 = a2
+                            best_score = score
+                        if best_score > good_enough:
+                            return best_g1, best_a1, best_g2, best_a2, best_score, cached_scores
+        return best_g1, best_a1, best_g2, best_a2, best_score, cached_scores
+
+    @staticmethod
+    def update_cached_scores(cached_scores, swapped_g1, swapped_g2):
+        if swapped_g1 in cached_scores:
+            cached_scores[swapped_g1] = {}
+        if swapped_g2 in cached_scores:
+            cached_scores[swapped_g2] = {}
+        for g in cached_scores:
+            for a in cached_scores[g]:
+                if swapped_g1 in cached_scores[g][a]:
+                    cached_scores[g][a][swapped_g1] = {}
+                if swapped_g2 in cached_scores[g][a]:
+                    cached_scores[g][a][swapped_g2] = {}
+
+    def optimize(self, max_swaps=MAX_SWAPS):
+        """
+        Trying swapping two youth. If it increases the score, keep the swap and try again, up to 100 times
+        """
+        cached_scores = None
+        best_score = 2000
+        last_time = datetime.datetime.now()
+        for i in range(max_swaps):
+            best_g1, best_a1, best_g2, best_a2, best_score, cached_scores = self.get_best_swap(good_enough=best_score,
+                                                                                               cached_scores=cached_scores)
+            if best_score > 0:
+                if (datetime.datetime.now() - last_time).seconds > 60:
+                    logging.info(f"Swapping {best_g1}/{best_a1} ({self.groups[best_g1].attendees[best_a1].name}) " + \
+                                f"with {best_g2}/{best_a2} ({self.groups[best_g2].attendees[best_a2].name}), +{best_score}")
+                logging.debug(f"Swapping {best_g1}/{best_a1} ({self.groups[best_g1].attendees[best_a1].name}) " + \
+                            f"with {best_g2}/{best_a2} ({self.groups[best_g2].attendees[best_a2].name}), +{best_score}")
+                self.swap(best_g1, best_a1, best_g2, best_a2)
+                self.update_cached_scores(cached_scores, best_g1, best_g2)
+                logging.debug(f'Score is {self.score()} after {i+1} swaps')
+            else:
+                logging.warning(f"No more good swaps after {i} swaps")
+                return
+    
+    def show(self, show_groups=True):
+        bless = 0
+        for idx, g in enumerate(self.groups):
+            g_txt, n_bless, attendee_lines = g.get_summary()
+            if show_groups:
+                print(f"Group {idx}\t{g_txt}")
+                for al in attendee_lines:
+                    print(al)
+            bless += n_bless
+        print(f"{self.score():.0f}, {bless} buddy-less attendees")
