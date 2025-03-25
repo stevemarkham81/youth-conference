@@ -109,7 +109,8 @@ class Conference:
                                                                                                cached_scores=cached_scores)
             if best_score > 0:
                 if (datetime.datetime.now() - last_time).seconds > 60:
-                    logging.info(f"Swapping {best_g1}/{best_a1} ({self.groups[best_g1].attendees[best_a1].name}) " + \
+                    last_time = datetime.datetime.now()
+                    logging.info(f"Swap {i+1} score={self.score()}, swapping {best_g1}/{best_a1} ({self.groups[best_g1].attendees[best_a1].name}) " + \
                                 f"with {best_g2}/{best_a2} ({self.groups[best_g2].attendees[best_a2].name}), +{best_score}")
                 logging.debug(f"Swapping {best_g1}/{best_a1} ({self.groups[best_g1].attendees[best_a1].name}) " + \
                             f"with {best_g2}/{best_a2} ({self.groups[best_g2].attendees[best_a2].name}), +{best_score}")

@@ -60,7 +60,7 @@ def main():
     attendees = from_csv(args.csv_file)
     # valid_seeds = [152323, 194302, 340188, 547448, 607579, 694989, 787695, 806047, 807688, 998956, 1362808, 1500691]
     # valid_seeds = [547448, 607579, 787695] 
-    valid_seeds = [152323, 194302, 340188, 547448, 607579, 694989, 787695, 806047, 807688, 998956, 1362808, 1500691] + list(range(100))
+    valid_seeds = [152323, 194302, 340188, 547448, 607579, 694989, 787695, 806047, 807688, 998956, 1362808, 1500691] + list(range(1000))
     for seed in valid_seeds:
         conference_json_file = f"results/conference_{seed}.json"
         if os.path.exists(conference_json_file):
