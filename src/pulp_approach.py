@@ -1,7 +1,8 @@
 import pulp
 import json
 from attendee import Attendee
-from main import from_csv
+from group import Group
+from common import from_csv
 from objective import Objective
 import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s:%(levelname)s:%(message)s')
@@ -9,22 +10,28 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s:%(levelname)s:%(mess
 attendees = from_csv('data/input.txt')
 names = [a.name for a in attendees]
 
-def get_attendee_by_name(name):
+def get_attendee_by_name(name, attendee_list=None):
+    if attendee_list is None:
+        attendee_list = attendees
+
     idx = names.index(name)
     attendee = attendees[idx]
     return attendee
+
+def pulp_to_group(pulp_group, attendee_list: list[Attendee]):
+    return Group([get_attendee_by_name(name, attendee_list) for name in pulp_group['names']])
 
 def solve_subset(subset: list[Attendee], max_group_size, min_group_size, max_groups):
     obj_func = Objective(subset)
 
     youths = [a for a in obj_func.attendees]
 
-    logging.info(f"# Youth {len(youths)}, num_groups {max_groups}")
+    logging.debug(f"# Youth {len(youths)}, num_groups {max_groups}")
 
     # create list of all possible groups
     possible_groups = [tuple(c) for c in pulp.allcombinations(youths, max_group_size) if obj_func.screen(c, max_group_size, min_group_size)]
 
-    logging.info(f"Num possible groups {len(possible_groups)}")
+    logging.debug(f"Num possible groups {len(possible_groups)}")
 
     # create a binary variable to state that a group setting is used
     x = pulp.LpVariable.dicts(
@@ -48,14 +55,14 @@ def solve_subset(subset: list[Attendee], max_group_size, min_group_size, max_gro
             f"Must_seat_{youth}",
         )
 
-    status = grouping_model.solve()
+    status = grouping_model.solve(pulp.PULP_CBC_CMD(msg=False))
 
-    logging.info(f"Status: {status}")
+    logging.debug(f"Status: {status}")
 
     if status not in [1, 2]:
         return [[]]
 
-    logging.info(f"The chosen groups are out of a total of {len(possible_groups)}:")
+    logging.debug(f"The chosen groups are out of a total of {len(possible_groups)}:")
     groups = []
     for group in possible_groups:
         if x[group].value() == 1.0:
@@ -74,8 +81,8 @@ def solve_subset(subset: list[Attendee], max_group_size, min_group_size, max_gro
                            'has_other': has_other})
     groups = sorted(groups, key=lambda g: g['max_age'])
     for g in groups:
-        logging.info(g['names'])
-        logging.info(f"score: {g['score']}, age range: {g['min_age']:.1f}-{g['max_age']:.1f}, has Coppell: {g['has_coppell']}, has other: {g['has_other']}")
+        logging.debug(g['names'])
+        logging.debug(f"score: {g['score']}, age range: {g['min_age']:.1f}-{g['max_age']:.1f}, has Coppell: {g['has_coppell']}, has other: {g['has_other']}")
 
     return groups
 
@@ -109,28 +116,29 @@ def iterate_by_groups(subset, total_groups, groups_per_search, youngest_first=Tr
     return found_groups
 
 
-total_groups = 10
-groups_per_search = 5
-
-ym = sorted([a for a in attendees if not a.is_female], key=lambda a: a.age)
-ym_groups_youngest_first = iterate_by_groups(ym, total_groups, groups_per_search, True)
-with open('results/ym_y.json', 'w') as f:
-    json.dump(ym_groups_youngest_first, f)
-
-if False:
-    yw = sorted([a for a in attendees if a.is_female], key=lambda a: a.age)
-    yw_groups_youngest_first = iterate_by_groups(yw, total_groups, groups_per_search, True)
-    with open('results/yw_y.json', 'w') as f:
-        json.dump(yw_groups_youngest_first, f)
-
-    yw = sorted([a for a in attendees if a.is_female], key=lambda a: a.age)
-    yw_groups_oldest_first = iterate_by_groups(yw, total_groups, groups_per_search, False)
-    with open('results/yw_o.json', 'w') as f:
-        json.dump(yw_groups_oldest_first, f)
-
+if __name__ == "__main__":
+    total_groups = 10
+    groups_per_search = 4
 
     ym = sorted([a for a in attendees if not a.is_female], key=lambda a: a.age)
-    ym_groups_oldest_first = iterate_by_groups(ym, total_groups, groups_per_search, False)
-    with open('results/ym_o.json', 'w') as f:
-        json.dump(ym_groups_oldest_first, f)
+    ym_groups_youngest_first = iterate_by_groups(ym, total_groups, groups_per_search, True)
+    with open('results/ym_y.json', 'w') as f:
+        json.dump(ym_groups_youngest_first, f)
+
+    if False:
+        yw = sorted([a for a in attendees if a.is_female], key=lambda a: a.age)
+        yw_groups_youngest_first = iterate_by_groups(yw, total_groups, groups_per_search, True)
+        with open('results/yw_y.json', 'w') as f:
+            json.dump(yw_groups_youngest_first, f)
+
+        yw = sorted([a for a in attendees if a.is_female], key=lambda a: a.age)
+        yw_groups_oldest_first = iterate_by_groups(yw, total_groups, groups_per_search, False)
+        with open('results/yw_o.json', 'w') as f:
+            json.dump(yw_groups_oldest_first, f)
+
+
+        ym = sorted([a for a in attendees if not a.is_female], key=lambda a: a.age)
+        ym_groups_oldest_first = iterate_by_groups(ym, total_groups, groups_per_search, False)
+        with open('results/ym_o.json', 'w') as f:
+            json.dump(ym_groups_oldest_first, f)
 

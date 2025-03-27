@@ -1,11 +1,12 @@
 from attendee import Attendee
 import numpy as np
 
-AGE_WEIGHT = 0
-GENDER_WEIGHT = 0
-UNIT_WEIGHT = 0
-COPPELL_WEIGHT = 0
-FRIEND_WEIGHT = 10
+CONSTRAINT_WEIGHT = 1
+AGE_WEIGHT = 1
+GENDER_WEIGHT = 1
+UNIT_WEIGHT = 1
+COPPELL_WEIGHT = 1
+FRIEND_WEIGHT = 3
 
 class Group:
     def __init__(self, attendees: list[Attendee]):
@@ -40,22 +41,28 @@ class Group:
         required_groupings = [['YW70', 'YW71'],
                               ['YM75', 'YM76'],
                               ['YM12', 'YM54', 'YM62'],
-                              ['YM41', 'YW49'],
+                              # ['YM41', 'YW49'],
         ]
         required_separation = []
 
         attendee_names = [a.name for a in self.attendees]
 
+        constraint_score = 0
         for rg in required_groupings:
             belong = [a in attendee_names for a in rg]
-            if any(belong) and not all(belong):
-                return -1e9
+            if any(belong):
+                if not all(belong):
+                    return -1e9
+                constraint_score += 1000
         
         for rs in required_separation:
             belong = [a in attendee_names for a in rs]
             if sum(belong) > 1:
                 return -1e9
+            constraint_score += 100
         
+        constraint_score = CONSTRAINT_WEIGHT * constraint_score
+
         age_range = max([a.age for a in self.attendees]) - min([a.age for a in self.attendees])
         if age_range < 1.1:
             age_range = 0
@@ -85,7 +92,7 @@ class Group:
                 friend_score += 6
         friend_score = FRIEND_WEIGHT * friend_score
 
-        return age_score + gender_score + unit_score + friend_score
+        return constraint_score + age_score + gender_score + unit_score + friend_score
 
     def __repr__(self):
         return f"Group({sorted([a.name for a in self.attendees])})"

@@ -1,6 +1,6 @@
 from attendee import Attendee
 import numpy as np
-from main import from_csv
+from common import from_csv
 
 
 AGE_WEIGHT = 1
@@ -75,7 +75,8 @@ class Objective:
         
         for sby in self.single_buddy_youth:
             if (sby[0] in names) and (not sby[1] in names):
-                return False
+                pass
+                # return False
 
         ages = [self.attendees[name].age for name in names]
 

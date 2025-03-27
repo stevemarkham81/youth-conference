@@ -1,27 +1,30 @@
 from attendee import Attendee
 from group import Group
 from copy import deepcopy
+import json
+from pulp_approach import pulp_to_group, solve_subset
 import logging
 import numpy as np
 import datetime
+import random
 
-MAX_SWAPS = 1000
-MAX_TRIES = 20000
+MAX_FAILED_TRIES = 100
 MEAN_WEIGHT = 1
 MIN_WEIGHT = 0
 
 
 class Conference:
-    def __init__(self, groups):
+    def __init__(self, groups, json_file):
         self.groups = groups
+        self.json_file = json_file
     
     def __dict__(self):
         return {'groups': [g.__dict__() for g in self.groups]}
 
     @classmethod
-    def from_dict(cls, data):
+    def from_dict(cls, data, conference_json_file):
         groups = [Group.from_dict(g) for g in data['groups']]
-        return cls(groups)
+        return cls(groups, conference_json_file)
 
     @property
     def num_attendees(self):
@@ -97,29 +100,78 @@ class Conference:
                 if swapped_g2 in cached_scores[g][a]:
                     cached_scores[g][a][swapped_g2] = {}
 
-    def optimize(self, max_swaps=MAX_SWAPS):
+    def improve_by_swap(self, i, best_score, cached_scores):
+        best_g1, best_a1, best_g2, best_a2, best_score, cached_scores = self.get_best_swap(good_enough=best_score,
+                                                                                               cached_scores=cached_scores)
+        if best_score > 0:
+            logging.debug(f"Swapping {best_g1}/{best_a1} ({self.groups[best_g1].attendees[best_a1].name}) " + \
+                        f"with {best_g2}/{best_a2} ({self.groups[best_g2].attendees[best_a2].name}), +{best_score}")
+            self.swap(best_g1, best_a1, best_g2, best_a2)
+            self.update_cached_scores(cached_scores, best_g1, best_g2)
+            logging.debug(f'Score is {self.score()} after {i+1} swaps')
+            return True, cached_scores
+        else:
+            logging.warning(f"No more good swaps after {i} swaps")
+            return False, cached_scores
+    
+    def pulp_to_group(pulp_group, attendees: list[Attendee]):
+        pass
+
+    def improve_by_pulp(self, i, best_score, cached_scores):
+        max_group_size = 8
+        min_group_size = 7
+        max_groups = 4
+
+        groups_to_dissolve = random.sample(range(len(self.groups)), max_groups)
+        subset = [a for i_group in groups_to_dissolve for a in self.groups[i_group].attendees]
+
+        pre_score = self.score()
+        found_groups = solve_subset(subset, max_group_size, min_group_size, max_groups)
+        if not found_groups or not found_groups[0]:
+            return False, cached_scores
+        
+        test_conference = Conference.from_dict(self.__dict__(), self.json_file)
+        for idx, i_group in enumerate(groups_to_dissolve):
+            new_group = pulp_to_group(found_groups[idx], subset)
+            test_conference.groups[i_group] = new_group
+        post_score = test_conference.score()
+        
+        if post_score > pre_score:
+            self.groups = test_conference.groups
+            return True, cached_scores
+
+        return False, cached_scores
+
+    def try_to_improve(self, i, best_score, cached_scores):
+        """
+        Do "one" thing to try to make the conference better
+        """
+        return self.improve_by_pulp(i, best_score, cached_scores)
+
+    def optimize(self, max_failed_tries=MAX_FAILED_TRIES):
         """
         Trying swapping two youth. If it increases the score, keep the swap and try again, up to 100 times
         """
         cached_scores = None
         best_score = 2000
         last_time = datetime.datetime.now()
-        for i in range(max_swaps):
-            best_g1, best_a1, best_g2, best_a2, best_score, cached_scores = self.get_best_swap(good_enough=best_score,
-                                                                                               cached_scores=cached_scores)
-            if best_score > 0:
-                if (datetime.datetime.now() - last_time).seconds > 60:
-                    last_time = datetime.datetime.now()
-                    logging.info(f"Swap {i+1} score={self.score()}, swapping {best_g1}/{best_a1} ({self.groups[best_g1].attendees[best_a1].name}) " + \
-                                f"with {best_g2}/{best_a2} ({self.groups[best_g2].attendees[best_a2].name}), +{best_score}")
-                logging.debug(f"Swapping {best_g1}/{best_a1} ({self.groups[best_g1].attendees[best_a1].name}) " + \
-                            f"with {best_g2}/{best_a2} ({self.groups[best_g2].attendees[best_a2].name}), +{best_score}")
-                self.swap(best_g1, best_a1, best_g2, best_a2)
-                self.update_cached_scores(cached_scores, best_g1, best_g2)
-                logging.debug(f'Score is {self.score()} after {i+1} swaps')
+        num_failed_tries = 0
+        i = 0
+        while num_failed_tries < MAX_FAILED_TRIES:
+            if (datetime.datetime.now() - last_time).seconds > 60:
+                last_time = datetime.datetime.now()
+                logging.info(f"Try {i+1} score={self.score()}")
+            
+            improved, cached_scores = self.try_to_improve(i, best_score, cached_scores)
+            i += 1
+            if not improved:
+                logging.info(f"Failed to improve after {i} tries")
+                num_failed_tries += 1
+                # return
             else:
-                logging.warning(f"No more good swaps after {i} swaps")
-                return
+                logging.info(f"New score after {i+1} tries: {self.score()}.  Saving conference to {self.json_file}")
+                with open(self.json_file, 'w') as f:
+                    json.dump(self.__dict__(), f)
     
     def show(self, show_groups=True):
         bless = 0
