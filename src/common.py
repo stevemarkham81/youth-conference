@@ -2,6 +2,12 @@ import csv
 import logging
 from attendee import Attendee
 
+def get_attendee_by_name(name, attendee_list):
+    names = [a.name for a in attendee_list]
+    idx = names.index(name)
+    attendee = attendee_list[idx]
+    return attendee
+
 def from_csv(csv_file_path):
     logging.info(f'Processing {csv_file_path}')
     attendees = []

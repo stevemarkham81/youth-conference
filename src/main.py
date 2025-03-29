@@ -35,36 +35,30 @@ def make_groups(attendees, num_groups):
     return groups
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Youth Conference Organizer")
-    parser.add_argument("--csv_file", default='data/input_ym_only_age_constraints.txt', help="Path to the attendee info file")
-    parser.add_argument("--num_groups", default=10, help="Number of groups to create")
-    args = parser.parse_args()
+def main(json_file):
+    with open(json_file, 'r') as f:
+        conference = Conference.from_dict(json.load(f), json_file)
 
-    orig_attendees = from_csv(args.csv_file)
-    # valid_seeds = [152323, 194302, 340188, 547448, 607579, 694989, 787695, 806047, 807688, 998956, 1362808, 1500691]
-    # valid_seeds = [547448, 607579, 787695] 
-    # valid_seeds = [152323, 194302, 340188, 547448, 607579, 694989, 787695, 806047, 807688, 998956, 1362808, 1500691] + list(range(1000))
-    valid_seeds = [None]
-    for seed in valid_seeds:
-        attendees = randomize_order(orig_attendees, seed)
-        conference_json_file = f"results/conference_{seed}.json"
-        if os.path.exists(conference_json_file):
-            with open(conference_json_file, 'r') as f:
-                conference = Conference.from_dict(json.load(f), conference_json_file)
-        else:
-            groups = make_groups(attendees, args.num_groups)
-            conference = Conference(groups, conference_json_file)
+    logging.info(f"Starting conference score {conference.score()}")
+    conference.optimize()
+    logging.info(f"Ending conference score {conference.score()}")
+    conference.show(show_groups=False)
 
-        logging.info(f"Seed {seed} has starting conference score {conference.score()}")
-        conference.optimize()
-        logging.info(f"Seed {seed} has ending conference score {conference.score()}")
-        conference.show(show_groups=False)
-
-        with open(conference_json_file, 'w') as f:
-            json.dump(conference.__dict__(), f)
+    with open(conference.json_file, 'w') as f:
+        json.dump(conference.__dict__(), f)
         
 
 
 if __name__ == '__main__':
-    main()
+    # parser = argparse.ArgumentParser(description="Youth Conference Organizer")
+    # parser.add_argument("--json_file", default='results/yw_None.json', help="Path to a JSON file, to update and optimize")
+    # args = parser.parse_args()
+
+    # main(args.json_file)
+
+    main('results/ym_None.json')
+    main('results/yw_None.json')
+    main('results/ym_None.json')
+    main('results/yw_None.json')
+    main('results/ym_None.json')
+    main('results/yw_None.json')

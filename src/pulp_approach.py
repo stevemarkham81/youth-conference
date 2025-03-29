@@ -1,22 +1,10 @@
 import pulp
-import json
 from attendee import Attendee
 from group import Group
-from common import from_csv
+from common import get_attendee_by_name
 from objective import Objective
 import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s:%(levelname)s:%(message)s')
-
-attendees = from_csv('data/input.txt')
-names = [a.name for a in attendees]
-
-def get_attendee_by_name(name, attendee_list=None):
-    if attendee_list is None:
-        attendee_list = attendees
-
-    idx = names.index(name)
-    attendee = attendees[idx]
-    return attendee
 
 def pulp_to_group(pulp_group, attendee_list: list[Attendee]):
     return Group([get_attendee_by_name(name, attendee_list) for name in pulp_group['names']])
@@ -66,7 +54,7 @@ def solve_subset(subset: list[Attendee], max_group_size, min_group_size, max_gro
     groups = []
     for group in possible_groups:
         if x[group].value() == 1.0:
-            group_attendees = [get_attendee_by_name(name) for name in group]
+            group_attendees = [get_attendee_by_name(name, subset) for name in group]
             ages = [a.age for a in group_attendees]
             units = [a.unit for a in group_attendees]
             has_coppell = any(["Coppell" in u for u in units])
@@ -109,36 +97,8 @@ def iterate_by_groups(subset, total_groups, groups_per_search, youngest_first=Tr
             return [{'error': 'Did not solve correctly', 'found_groups': found_groups}]
 
         for name in first_group['names']:
-            subset.remove(get_attendee_by_name(name))
+            subset.remove(get_attendee_by_name(name, subset))
         found_groups.append(first_group)
     groups = solve_subset(subset, max_group_size=max_group_size, min_group_size=min_group_size, max_groups=groups_per_search)
     found_groups.extend(groups)
     return found_groups
-
-
-if __name__ == "__main__":
-    total_groups = 10
-    groups_per_search = 4
-
-    ym = sorted([a for a in attendees if not a.is_female], key=lambda a: a.age)
-    ym_groups_youngest_first = iterate_by_groups(ym, total_groups, groups_per_search, True)
-    with open('results/ym_y.json', 'w') as f:
-        json.dump(ym_groups_youngest_first, f)
-
-    if False:
-        yw = sorted([a for a in attendees if a.is_female], key=lambda a: a.age)
-        yw_groups_youngest_first = iterate_by_groups(yw, total_groups, groups_per_search, True)
-        with open('results/yw_y.json', 'w') as f:
-            json.dump(yw_groups_youngest_first, f)
-
-        yw = sorted([a for a in attendees if a.is_female], key=lambda a: a.age)
-        yw_groups_oldest_first = iterate_by_groups(yw, total_groups, groups_per_search, False)
-        with open('results/yw_o.json', 'w') as f:
-            json.dump(yw_groups_oldest_first, f)
-
-
-        ym = sorted([a for a in attendees if not a.is_female], key=lambda a: a.age)
-        ym_groups_oldest_first = iterate_by_groups(ym, total_groups, groups_per_search, False)
-        with open('results/ym_o.json', 'w') as f:
-            json.dump(ym_groups_oldest_first, f)
-

@@ -1,6 +1,7 @@
 from attendee import Attendee
 from group import Group
 from copy import deepcopy
+from common import get_attendee_by_name
 import json
 from pulp_approach import pulp_to_group, solve_subset
 import logging
@@ -8,14 +9,14 @@ import numpy as np
 import datetime
 import random
 
-MAX_FAILED_TRIES = 100
+MAX_FAILED_TRIES = 10
 MEAN_WEIGHT = 1
 MIN_WEIGHT = 0
 
 
 class Conference:
     def __init__(self, groups, json_file):
-        self.groups = groups
+        self.groups = sorted(groups, key=lambda g: np.mean([a.age for a in g.attendees]))
         self.json_file = json_file
     
     def __dict__(self):
@@ -24,6 +25,15 @@ class Conference:
     @classmethod
     def from_dict(cls, data, conference_json_file):
         groups = [Group.from_dict(g) for g in data['groups']]
+        return cls(groups, conference_json_file)
+    
+    @classmethod
+    def from_pulp_json(cls, json_file, attendees_list, conference_json_file):
+        with open(json_file, 'r') as f:
+            data = json.load(f)
+        groups = []
+        for pulp_group in data:
+            groups.append(Group([get_attendee_by_name(name, attendees_list) for name in pulp_group['names']]))
         return cls(groups, conference_json_file)
 
     @property
@@ -118,11 +128,12 @@ class Conference:
         pass
 
     def improve_by_pulp(self, i, best_score, cached_scores):
-        max_group_size = 8
-        min_group_size = 7
-        max_groups = 4
+        max_groups = 3
 
-        groups_to_dissolve = random.sample(range(len(self.groups)), max_groups)
+        start = i%(len(self.groups)+1-max_groups)
+        groups_to_dissolve = list(range(start, start+max_groups))
+        max_group_size = max([len(self.groups[ig].attendees) for ig in groups_to_dissolve])
+        min_group_size = min([len(self.groups[ig].attendees) for ig in groups_to_dissolve])
         subset = [a for i_group in groups_to_dissolve for a in self.groups[i_group].attendees]
 
         pre_score = self.score()
@@ -137,7 +148,7 @@ class Conference:
         post_score = test_conference.score()
         
         if post_score > pre_score:
-            self.groups = test_conference.groups
+            self.groups = sorted(test_conference.groups, key=lambda g: np.mean([a.age for a in g.attendees]))
             return True, cached_scores
 
         return False, cached_scores
@@ -178,7 +189,7 @@ class Conference:
         for idx, g in enumerate(self.groups):
             g_txt, n_bless, attendee_lines = g.get_summary()
             if show_groups:
-                print(f"Group {idx}\t{g_txt}")
+                print(f"Group {idx+1}\t{g_txt}")
                 for al in attendee_lines:
                     print(al)
             bless += n_bless
